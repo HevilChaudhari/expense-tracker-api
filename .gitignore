@@ -1,0 +1,17 @@
+.env
+
+# Go
+*.exe
+*.test
+*.out
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local test data
+Post_add_expense_data.txt
