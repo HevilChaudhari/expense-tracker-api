@@ -2,8 +2,12 @@ package handlers
 
 import (
 	"encoding/json"
-	"expense-tracker/internal/services"
 	"net/http"
+	"os"
+
+	"expense-tracker/internal/auth"
+	"expense-tracker/internal/models"
+	"expense-tracker/internal/services"
 )
 
 type UserHandler struct {
@@ -25,6 +29,12 @@ type RegisterRequest struct {
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
+}
+
+// LoginResponse returns the generated JWT token alongside user details
+type LoginResponse struct {
+	Token string       `json:"token"`
+	User  *models.User `json:"user"`
 }
 
 func (handler *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -79,12 +89,38 @@ func (handler *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	)
 
 	if err != nil {
+		// Return 404 if the user is not registered
+		if err.Error() == "user not found" {
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
+		}
+		// Return 401 for invalid password or other auth errors
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
+	}
+
+	// Get JWT secret from environment
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		secret = "my_expense_tracker_secret_key"
+	}
+
+	// Generate JWT token for this user
+	token, err := auth.GenerateToken(user.ID, secret)
+	if err != nil {
+		http.Error(w, "Failed to generate token", http.StatusInternalServerError)
+		return
+	}
+
+	// Send back both token and user details
+	response := LoginResponse{
+		Token: token,
+		User:  user,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
-	json.NewEncoder(w).Encode(user)
+	json.NewEncoder(w).Encode(response)
 }
+

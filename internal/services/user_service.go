@@ -62,7 +62,8 @@ func (service *UserService) LoginUser(ctx context.Context, email string, passwor
 	user, err := service.userRepository.GetUserByEmail(ctx, email)
 
 	if err != nil {
-		return nil, errors.New("Invalid Email or Password")
+		// If user is not registered in the database
+		return nil, errors.New("user not found")
 	}
 
 	err = bcrypt.CompareHashAndPassword(
@@ -71,7 +72,8 @@ func (service *UserService) LoginUser(ctx context.Context, email string, passwor
 	)
 
 	if err != nil {
-		return nil, errors.New("invalid email or password")
+		// If password doesn't match
+		return nil, errors.New("invalid password")
 	}
 
 	return user, nil

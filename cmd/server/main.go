@@ -6,6 +6,7 @@ import (
 
 	"expense-tracker/internal/database"
 	"expense-tracker/internal/handlers"
+	"expense-tracker/internal/middleware"
 	"expense-tracker/internal/repositories"
 	"expense-tracker/internal/services"
 )
@@ -30,11 +31,15 @@ func main() {
 
 	defer pool.Close()
 
-	http.HandleFunc("/expenses", expenseHandler.ExpenseHandler)
-	http.HandleFunc("/expenses/", expenseHandler.ExpenseHandler)
-	http.HandleFunc("/expenses/summary", expenseHandler.ExpenseHandler)
+	// Protected routes (require valid JWT in Authorization header)
+	http.Handle("/expenses", middleware.AuthMiddleware(http.HandlerFunc(expenseHandler.ExpenseHandler)))
+	http.Handle("/expenses/", middleware.AuthMiddleware(http.HandlerFunc(expenseHandler.ExpenseHandler)))
+	http.Handle("/expenses/summary", middleware.AuthMiddleware(http.HandlerFunc(expenseHandler.ExpenseHandler)))
+
+	// Public routes (no authentication required)
 	http.HandleFunc("/register", userHandler.Register)
 	http.HandleFunc("/login", userHandler.Login)
+
 
 	fmt.Println("Server running on http://localhost:8080")
 

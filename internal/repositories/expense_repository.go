@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"expense-tracker/internal/models"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -17,11 +18,12 @@ func NewExpenseRepository(pool *pgxpool.Pool) *ExpenseRepository {
 	}
 }
 
-func (repository *ExpenseRepository) Add(newExpense models.Expense) error {
+// Add creates a new expense associated with the user
+func (repository *ExpenseRepository) Add(userID int, newExpense models.Expense) error {
 
 	query := `
-	INSERT INTO expenses (title,amount,category) 
-	VALUES ($1,$2,$3)
+	INSERT INTO expenses (title, amount, category, user_id) 
+	VALUES ($1, $2, $3, $4)
 	`
 
 	_, err := repository.pool.Exec(
@@ -30,16 +32,21 @@ func (repository *ExpenseRepository) Add(newExpense models.Expense) error {
 		newExpense.Title,
 		newExpense.Amount,
 		newExpense.Category,
+		userID,
 	)
 
 	return err
 }
 
-func (repository *ExpenseRepository) GetAll() ([]models.Expense, error) {
+// GetAll returns all expenses belonging to the given user
+func (repository *ExpenseRepository) GetAll(userID int) ([]models.Expense, error) {
+
+	query := `SELECT id, title, amount, category, user_id FROM expenses WHERE user_id = $1`
 
 	rows, err := repository.pool.Query(
 		context.Background(),
-		`SELECT id, title, amount, category FROM expenses`,
+		query,
+		userID,
 	)
 
 	if err != nil {
@@ -58,6 +65,7 @@ func (repository *ExpenseRepository) GetAll() ([]models.Expense, error) {
 			&expense.Title,
 			&expense.Amount,
 			&expense.Category,
+			&expense.UserID,
 		)
 
 		if err != nil {
@@ -74,11 +82,12 @@ func (repository *ExpenseRepository) GetAll() ([]models.Expense, error) {
 	return expenses, nil
 }
 
-func (repository *ExpenseRepository) GetByID(id int) (models.Expense, error) {
+// GetByID returns an expense by ID only if it belongs to the user
+func (repository *ExpenseRepository) GetByID(userID int, id int) (models.Expense, error) {
 
-	query := `SELECT id,title,amount,category FROM expenses WHERE id = $1`
+	query := `SELECT id, title, amount, category, user_id FROM expenses WHERE id = $1 AND user_id = $2`
 
-	row := repository.pool.QueryRow(context.Background(), query, id)
+	row := repository.pool.QueryRow(context.Background(), query, id, userID)
 
 	var expense models.Expense
 
@@ -87,6 +96,7 @@ func (repository *ExpenseRepository) GetByID(id int) (models.Expense, error) {
 		&expense.Title,
 		&expense.Amount,
 		&expense.Category,
+		&expense.UserID,
 	)
 
 	if err != nil {
@@ -96,30 +106,50 @@ func (repository *ExpenseRepository) GetByID(id int) (models.Expense, error) {
 	return expense, nil
 }
 
-func (repository *ExpenseRepository) UpdateByID(newExpense models.Expense) error {
+// UpdateByID updates an expense only if it belongs to the user
+func (repository *ExpenseRepository) UpdateByID(userID int, newExpense models.Expense) error {
 
 	query := `UPDATE expenses
 				SET title = $1,
 				amount = $2,
 				category = $3
-				WHERE id = $4
+				WHERE id = $4 AND user_id = $5
 				`
 
-	_, err := repository.pool.Exec(context.Background(),
+	cmdTag, err := repository.pool.Exec(context.Background(),
 		query,
 		newExpense.Title,
 		newExpense.Amount,
 		newExpense.Category,
-		newExpense.ID)
+		newExpense.ID,
+		userID)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("expense not found")
+	}
+
+	return nil
 }
 
-func (repository *ExpenseRepository) DeleteByID(id int) error {
+// DeleteByID deletes an expense only if it belongs to the user
+func (repository *ExpenseRepository) DeleteByID(userID int, id int) error {
 
-	query := `DELETE FROM expenses WHERE id = $1`
+	query := `DELETE FROM expenses WHERE id = $1 AND user_id = $2`
 
-	_, err := repository.pool.Exec(context.Background(), query, id)
+	cmdTag, err := repository.pool.Exec(context.Background(), query, id, userID)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	if cmdTag.RowsAffected() == 0 {
+		return errors.New("expense not found")
+	}
+
+	return nil
 }
+

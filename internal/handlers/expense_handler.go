@@ -2,12 +2,14 @@ package handlers
 
 import (
 	"encoding/json"
-	"expense-tracker/internal/models"
-	"expense-tracker/internal/services"
 	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"expense-tracker/internal/middleware"
+	"expense-tracker/internal/models"
+	"expense-tracker/internal/services"
 )
 
 type ExpenseHandlerStruct struct {
@@ -23,21 +25,28 @@ func NewExpenseHandler(service *services.ExpenseService) *ExpenseHandlerStruct {
 
 func (handler *ExpenseHandlerStruct) ExpenseHandler(w http.ResponseWriter, r *http.Request) {
 
+	// Retrieve authenticated user's ID from request context
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok || userID == 0 {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	switch r.Method {
 	case http.MethodGet:
-		handler.getExpense(w, r)
+		handler.getExpense(w, r, userID)
 	case http.MethodPost:
-		handler.addExpense(w, r)
+		handler.addExpense(w, r, userID)
 	case http.MethodPut:
-		handler.updateExpense(w, r)
+		handler.updateExpense(w, r, userID)
 	case http.MethodDelete:
-		handler.deleteExpense(w, r)
+		handler.deleteExpense(w, r, userID)
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
-func (handler *ExpenseHandlerStruct) getExpense(w http.ResponseWriter, r *http.Request) {
+func (handler *ExpenseHandlerStruct) getExpense(w http.ResponseWriter, r *http.Request, userID int) {
 
 	category := r.URL.Query().Get("category")
 	minAmount := r.URL.Query().Get("minAmount")
@@ -71,7 +80,7 @@ func (handler *ExpenseHandlerStruct) getExpense(w http.ResponseWriter, r *http.R
 	// Check if any query filter was provided
 	if category != "" || minAmount != "" || maxAmount != "" {
 
-		expenses, err := handler.expenseService.GetAllExpenses()
+		expenses, err := handler.expenseService.GetAllExpenses(userID)
 
 		if err != nil {
 			http.Error(w, "Could not get expenses", http.StatusInternalServerError)
@@ -115,7 +124,7 @@ func (handler *ExpenseHandlerStruct) getExpense(w http.ResponseWriter, r *http.R
 
 		if parts[2] == "summary" {
 
-			summary, err := handler.expenseService.GetExpenseSummary()
+			summary, err := handler.expenseService.GetExpenseSummary(userID)
 
 			if err != nil {
 				fmt.Fprintln(w, "Could not get ExpensesSummary")
@@ -141,7 +150,7 @@ func (handler *ExpenseHandlerStruct) getExpense(w http.ResponseWriter, r *http.R
 		}
 
 		var expense models.Expense
-		expense, err = handler.expenseService.GetExpenseByID(id)
+		expense, err = handler.expenseService.GetExpenseByID(userID, id)
 
 		if err == nil {
 			w.Header().Set("Content-Type", "application/json")
@@ -157,7 +166,7 @@ func (handler *ExpenseHandlerStruct) getExpense(w http.ResponseWriter, r *http.R
 		}
 
 	} else {
-		expenses, err := handler.expenseService.GetAllExpenses()
+		expenses, err := handler.expenseService.GetAllExpenses(userID)
 
 		if err != nil {
 			fmt.Println(err)
@@ -175,10 +184,9 @@ func (handler *ExpenseHandlerStruct) getExpense(w http.ResponseWriter, r *http.R
 	}
 }
 
-func (handler *ExpenseHandlerStruct) addExpense(w http.ResponseWriter, r *http.Request) {
+func (handler *ExpenseHandlerStruct) addExpense(w http.ResponseWriter, r *http.Request, userID int) {
 
 	var newExpense models.Expense
-	// w.Header().Set("Content-Type", "application/json")
 	err := json.NewDecoder(r.Body).Decode(&newExpense)
 
 	if err != nil {
@@ -186,7 +194,8 @@ func (handler *ExpenseHandlerStruct) addExpense(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	err = handler.expenseService.AddExpense(newExpense)
+	newExpense.UserID = userID
+	err = handler.expenseService.AddExpense(userID, newExpense)
 
 	if err != nil {
 		http.Error(w, "Failed to add expense", http.StatusInternalServerError)
@@ -196,7 +205,7 @@ func (handler *ExpenseHandlerStruct) addExpense(w http.ResponseWriter, r *http.R
 	w.WriteHeader(http.StatusCreated)
 }
 
-func (handler *ExpenseHandlerStruct) updateExpense(w http.ResponseWriter, r *http.Request) {
+func (handler *ExpenseHandlerStruct) updateExpense(w http.ResponseWriter, r *http.Request, userID int) {
 
 	parts := strings.Split(r.URL.Path, "/")
 
@@ -222,8 +231,9 @@ func (handler *ExpenseHandlerStruct) updateExpense(w http.ResponseWriter, r *htt
 	}
 
 	updatedExpense.ID = id
+	updatedExpense.UserID = userID
 
-	err = handler.expenseService.UpdateExpenseByID(updatedExpense)
+	err = handler.expenseService.UpdateExpenseByID(userID, updatedExpense)
 
 	if err != nil {
 		http.Error(w, "Expense not found", http.StatusNotFound)
@@ -234,7 +244,7 @@ func (handler *ExpenseHandlerStruct) updateExpense(w http.ResponseWriter, r *htt
 	json.NewEncoder(w).Encode(updatedExpense)
 }
 
-func (handler *ExpenseHandlerStruct) deleteExpense(w http.ResponseWriter, r *http.Request) {
+func (handler *ExpenseHandlerStruct) deleteExpense(w http.ResponseWriter, r *http.Request, userID int) {
 	parts := strings.Split(r.URL.Path, "/")
 
 	if len(parts) != 3 {
@@ -249,7 +259,7 @@ func (handler *ExpenseHandlerStruct) deleteExpense(w http.ResponseWriter, r *htt
 		return
 	}
 
-	err = handler.expenseService.DeleteExpenseByID(id)
+	err = handler.expenseService.DeleteExpenseByID(userID, id)
 
 	if err == nil {
 		w.WriteHeader(http.StatusNoContent)
@@ -257,3 +267,4 @@ func (handler *ExpenseHandlerStruct) deleteExpense(w http.ResponseWriter, r *htt
 		http.Error(w, "Expense not found", http.StatusNotFound)
 	}
 }
+

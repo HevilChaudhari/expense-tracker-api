@@ -5,4 +5,6 @@ type Expense struct {
 	Title    string  `json:"title"`
 	Amount   float32 `json:"amount"`
 	Category string  `json:"category"`
+	UserID   int     `json:"-"`
 }
+
